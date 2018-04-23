@@ -11,7 +11,6 @@ from calDistance import *
 
 sThreshold = float(50)       # 面积阈值100km2
 tThreshold = float(480)       # 时间阈值8h，最小粒度为min
-
 w_time = 0.5
 w_loc = 0.5  #时空权重
                   
