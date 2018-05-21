@@ -10,6 +10,13 @@ Created on Mon Apr 16 18:32:37 2018
 import numpy as np
 import time
 import random
+#from calminloss1 import *
+
+bin_code = list(np.load('./data/bin_code.npy'))
+time_window = 24    #滑动窗口长8h
+time_interval = 1  #滑动粒度为1h
+#l_diverse = 7     #包含位置达3个
+
 
 def mergetwostring(s1,s2):
     return(sum(map(int, str(int(s1)|int(s2)))))
@@ -27,138 +34,102 @@ def addStartTime(T):
         return T+time_interval
     
 def checkeachtrace(tracechoice, StartTime):         #检查一条轨迹情况
-    start = (int(str(StartTime)[-4:-2])-1)*24 + int(str(StartTime)[-2:])
-    temp2 = bin_code[tracechoice][start]
+    curtime = (int(str(StartTime)[-4:-2])-1)*24 + int(str(StartTime)[-2:])
+    temp=[bin_code[tracechoice][curtime]]
+    cnt_temp = [1]
     for i in range(1,time_window,1):
-        if int(bin_code[tracechoice][start],2) == 0:
-            continue
-        else:
-            temp2 = str(bin(int(temp2,2) | int(bin_code[tracechoice][i+start],2))[2:])
-    return temp2
-
-def checkuniontrace(tracelist):
-    StartTime = 2018010100
-    while StartTime <= 2018013124 - time_window:
-        temp1 = '0'
+        curtime = curtime + 1
+        curcode = bin_code[tracechoice][curtime]
         flag = 0
-        cnt_diverse = 0
-        for i in tracelist:
-            temp2 = int(checkeachtrace(i, StartTime),2)
-            if temp2 == 0:
-                cnt_diverse = cnt_diverse + 1
-            else:
-                temp1 = str(bin(int(temp1,2) | temp2)[2:])
-            if (temp1.count('1') + cnt_diverse) >= l_diverse:
-#            if (sum(map(int, temp1)) + cnt_diverse) >= l_diverse:
-                flag = 1
-                break
-        if flag:
-            StartTime = addStartTime(StartTime)
+        if curcode == 0:
             continue
         else:
-            diverse = temp1.count('1')
-#            diverse = sum(map(int, temp1))
-            if (diverse + cnt_diverse) >= l_diverse:
+            for j in range(len(temp)):
+                if curcode == temp[j]:
+                    cnt_temp[j] = cnt_temp[j] + 1
+                    flag = 1
+                    break
+            if flag == 0:
+                temp.append(curcode)
+                cnt_temp.append(1)
+            
+#            try:
+#                curind = temp.index(curcode)
+#            except ValueError:
+#                temp.append(curcode)
+#                cnt_temp.append(1)
+#            else:
+#                cnt_temp[curind] = cnt_temp[curind] + 1
+    if len(temp) == 0:
+        return -1         # 该地方没有点
+    else:
+        cnt_mat = np.concatenate(([temp],[cnt_temp]),axis=0)
+        cnt_mat = cnt_mat[:,np.argsort(-cnt_mat[1])]
+        poss = [cnt_mat[0][0]]  # 可能的地址值
+        poss_cnt = cnt_mat[1][0]
+        for i in range(1,len(temp),1):
+            if poss_cnt > cnt_mat[1][i]:
+                break
+            else:
+                poss.append(cnt_mat[0][i])
+        return random.sample(poss,1)[0]
+
+def checkuniontrace(tracelist, l_diverse, k):
+    if len(tracelist) < k:
+        return False
+    else:
+        StartTime = 2018010100
+        while StartTime <= 2018013124 - time_window:
+    #            temp1 = '0'   #old
+            temp1 = []
+            flag = 0
+            for i in tracelist:
+                temp2 = checkeachtrace(i, StartTime)
+                if temp2 == -1:
+                    continue         # 全为空时不算diverse
+                else:
+                    temp1.append(temp2)
+                    temp1 = list(set(temp1))
+    #                    temp1 = bin(int(temp1,2) | temp2)[2:]  #old
+                    
+    #                if (temp1.count('1') + cnt_diverse) >= l_diverse:  #old
+                if len(temp1) >= l_diverse:
+                    flag = 1
+                    break
+            if flag:
                 StartTime = addStartTime(StartTime)
                 continue
             else:
-                return False
-    return True
+    #                diverse = temp1.count('1')    #old
+                if len(temp1) >= l_diverse:
+                    StartTime = addStartTime(StartTime)
+                    continue
+                else:
+                    return False
+        return True
 
-def bindivide(tr1,tr2):
-    divide = []
-    stretch_div = []
-    while len(tr2) > l_diverse:
-        stretch_sum = []
-        stretch_comb = []   #记录可行的轨迹集
-        stretch_index = []
-        flag = 0   # flag=1则停止循环
-        stretch_sum.append(stretch[tr1,:][:,tr1].sum() + stretch[tr2,:][:,tr2].sum())
-        
-        for index in range(len(tr2)):
-            if index > np.max(tr1):
-                tr11 = tr1 + [tr2[index]]
-                tr22 = list(np.array(tr2).copy())
-                tr22.remove(tr2[index])
-                if checkuniontrace(tr22):
-                    stretch_sum.append(stretch_sum[0] + stretch[index,tr1].sum() + stretch[tr1,index].sum() - stretch[tr22,index].sum() - stretch[index,tr22].sum())
-                    stretch_comb.append([tr11,tr22])
-                    stretch_index.append(index)
-        
-        stretch_sum.remove(stretch_sum[0])
-        if len(stretch_sum) > 0:
-            index = np.argmin(stretch_sum)
-        else:
-            break 
-        while not checkuniontrace(stretch_comb[index][0]):
-            del stretch_comb[index]
-            del stretch_index[index]
-            del stretch_sum[index]
-            if len(stretch_sum) > 0:
-                index = np.argmin(stretch_sum)
-            else:
-                flag = 1
-                break
-        if flag:
-            break
-        else:
-            tr1 = stretch_comb[index][0]
-            tr2 = stretch_comb[index][1]
-            divide.append([tr1,tr2])
-            stretch_div.append(stretch_sum[index])
-    return divide, stretch_div
+
+
 
 if __name__ == "__main__":
-    bin_code = list(np.load('./data/test_bin_code.npy'))
-    stretch = np.load('./data/stretch_matrix.npy')
-    
-    time_window = 16    #滑动窗口长8h
-    time_interval = 1  #滑动粒度为1h
-    l_diverse = 3     #包含位置达40个
-    
-#    length = len(bin_code)
+    bin_code = list(np.load('./data/bin_code1.npy'))
     length = 200
-
+    
+    a = checkuniontrace(range(1,20,1),3)
+    
     start = time.asctime(time.localtime(time.time()))   
     
     final = []
     check_final = []
     
-    tr1 = [0,1,3,10]
-    tr2 = [i for i in range(0,max(tr1),1) if i not in tr1] + range (max(tr1)+1,200,1)
-    
-    divide, stretch_div = bindivide(tr1,tr2)
-    
-#    stretch_sum = []
-#    stretch_comb = []   #记录可行的轨迹集
-#    stretch_index = []
-#    flag = 0   # flag=1则停止循环
-#    stretch_sum.append(stretch[tr1,:][:,tr1].sum() + stretch[tr2,:][:,tr2].sum())
+    for k in range(60):
+        tr1 = random.sample(range(50),20)
+        tr2 = [i for i in range(0,max(tr1),1) if i not in tr1] + range (max(tr1)+1,50,1)
+        if checkuniontrace(tr1,5) == False:
+            final.append(tr1)
+        if checkuniontrace(tr2,5) == False:
+            final.append(tr2)
 #    
-#    for index in range(len(tr2)):
-#        if index > np.max(tr1):
-#            tr11 = tr1 + [tr2[index]]
-#            tr22 = list(np.array(tr2).copy())
-#            tr22.remove(tr2[index])
-#            if checkuniontrace(tr22):
-#                stretch_sum.append(stretch_sum[0] + stretch[index,tr1].sum() + stretch[tr1,index].sum() - stretch[tr22,index].sum() - stretch[index,tr22].sum())
-#                stretch_comb.append([tr11,tr22])
-#                stretch_index.append(index)
-#    #            print time.asctime(time.localtime(time.time()))
-#    #            print stretch_sum[-1]
-#    #            print stretch_index[-1]
-#    
-#    stretch_sum.remove(stretch_sum[0])
-#    if len(stretch_sum) > 0:
-#        index = np.argmin(stretch_sum)
-#    else:
-#        break
-#    while not checkuniontrace(stretch_comb[index][0]) or not checkuniontrace(stretch_comb[index][1]):
-#        del stretch_comb[index]
-#        del stretch_index[index]
-#        del stretch_sum[index]
-#        index = np.argmin(stretch_sum)
-
     
     end = time.asctime(time.localtime(time.time()))
     
